@@ -2,8 +2,12 @@ cmake_minimum_required(VERSION 2.6)
 project(tencent-log-sdk-cpp)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wno-deprecated-declarations" )
 
-find_package(Protobuf REQUIRED)
+find_package(PkgConfig REQUIRED)
+set(ENV{PKG_CONFIG_PATH} "/usr/local/opt/openssl@1.1/lib/pkgconfig")
+pkg_search_module(OPENSSL REQUIRED openssl)
+include_directories("/usr/local/opt/openssl@1.1/include")
 
+find_package(Protobuf REQUIRED)
 include_directories(${PROTOBUF_INCLUDE_DIRS})
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS cls_logs.proto logproducerconfig.proto)
 

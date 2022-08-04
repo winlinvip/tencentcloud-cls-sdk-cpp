@@ -1,0 +1,11 @@
+.cmake/
+.idea/
+.ninja_deps
+.ninja_log
+CMakeCache.txt
+CMakeFiles/
+Makefile
+Testing/
+build.ninja
+cmake_install.cmake
+libclssdk.a
