@@ -52,3 +52,13 @@ install(FILES client.h RestfulApiCommon.h common.h
 install(DIRECTORY rapidjson
     DESTINATION include)
 
+
+set(SOURCE_FILES main.cpp)
+ADD_EXECUTABLE(example ${SOURCE_FILES})
+TARGET_LINK_LIBRARIES(example clssdk_static)
+TARGET_LINK_LIBRARIES(example ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES}
+        /usr/local/opt/openssl@1.1/lib/libssl.a
+        /usr/local/opt/openssl@1.1/lib/libcrypto.a
+        /usr/local/opt/boost/lib/libboost_thread-mt.a
+        curl)
+

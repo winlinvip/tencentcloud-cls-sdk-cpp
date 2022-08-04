@@ -9,3 +9,4 @@ Testing/
 build.ninja
 cmake_install.cmake
 libclssdk.a
+example
