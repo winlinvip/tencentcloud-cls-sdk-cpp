@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include "result.h"
 #include "error.h"
+#include <stdlib.h>
 using namespace tencent_log_sdk_cpp_v2;
 using namespace std;
 
@@ -24,11 +25,23 @@ public:
 };
 
 int main(int argc, char** argv) {
+    std::string region = getenv("REGION") ? getenv("REGION") : "ap-guangzhou";
+    std::string ak_id = getenv("AKID") ?  getenv("AKID") : "";
+    std::string ak_secret = getenv("AKSECRET") ? getenv("AKSECRET") : "";
+    std::string topic = getenv("TOPIC") ? getenv("TOPIC") : "";
+
+    string endpoint = region + ".cls.tencentcs.com";
+    cout << "region:" << region << ", endpoint:" << endpoint << ", ak:" << ak_id << ", secret:" << ak_secret.length()
+        << "B" << ", topic:" << topic << endl;
+    if (ak_id.empty() || ak_secret.empty() || topic.empty()) {
+        cout << "No config" << endl;
+        exit(-1);
+    }
+
     cls_config::LogProducerConfig config;
-    config.set_endpoint("ap-guangzhou.cls.tencentcs.com");
-    config.set_acceskeyid("");
-    config.set_accesskeysecret("");
-    std::string topic = "";
+    config.set_endpoint(endpoint);
+    config.set_acceskeyid(ak_id);
+    config.set_accesskeysecret(ak_secret);
     auto client = std::make_shared<ProducerClient>(config);
     auto callback = std::make_shared<UserResult>();
     client->Start();

@@ -53,6 +53,7 @@ install(DIRECTORY rapidjson
     DESTINATION include)
 
 
+ADD_DEFINITIONS("-g -O0")
 set(SOURCE_FILES main.cpp)
 ADD_EXECUTABLE(example ${SOURCE_FILES})
 TARGET_LINK_LIBRARIES(example clssdk_static)
