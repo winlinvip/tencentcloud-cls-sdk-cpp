@@ -54,10 +54,20 @@ install(DIRECTORY rapidjson
 
 
 ADD_DEFINITIONS("-g -O0")
-set(SOURCE_FILES main.cpp)
-ADD_EXECUTABLE(example ${SOURCE_FILES})
-TARGET_LINK_LIBRARIES(example clssdk_static)
-TARGET_LINK_LIBRARIES(example ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES}
+set(SOURCE_FILES example_async.cpp)
+ADD_EXECUTABLE(example_async ${SOURCE_FILES})
+TARGET_LINK_LIBRARIES(example_async clssdk_static)
+TARGET_LINK_LIBRARIES(example_async ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES}
+        /usr/local/opt/openssl@1.1/lib/libssl.a
+        /usr/local/opt/openssl@1.1/lib/libcrypto.a
+        /usr/local/opt/boost/lib/libboost_thread-mt.a
+        curl)
+
+ADD_DEFINITIONS("-g -O0")
+set(SOURCE_FILES example_sync.cpp)
+ADD_EXECUTABLE(example_sync ${SOURCE_FILES})
+TARGET_LINK_LIBRARIES(example_sync clssdk_static)
+TARGET_LINK_LIBRARIES(example_sync ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES}
         /usr/local/opt/openssl@1.1/lib/libssl.a
         /usr/local/opt/openssl@1.1/lib/libcrypto.a
         /usr/local/opt/boost/lib/libboost_thread-mt.a

@@ -10,3 +10,5 @@ build.ninja
 cmake_install.cmake
 libclssdk.a
 example
+example_async
+example_sync
