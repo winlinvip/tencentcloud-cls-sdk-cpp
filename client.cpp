@@ -393,7 +393,7 @@ int LOGClient::LogSizeCalculate(const cls::LogGroup& loggroup_)
     {
         return ERRCODE_LIMIT_LOG_SIZE;
     }
-    return ret;
+     return ret;
 }
 
 } // namespace tencent_log_sdk_cpp_v2
