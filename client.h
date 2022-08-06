@@ -74,6 +74,7 @@ public:
     ~LOGClient() throw();
 
     PostLogStoreLogsResponse PostLogStoreLogs(const std::string& topic, const cls::LogGroup& loggroup_);
+    PostLogStoreLogsResponse PostLogStoreLogs2(const std::string& topic, const std::string& serializeData);
 
     void SetClsHost(const std::string& clsHost);
     std::string GetClsHost();

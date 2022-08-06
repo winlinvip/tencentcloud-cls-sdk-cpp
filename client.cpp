@@ -326,7 +326,6 @@ PostLogStoreLogsResponse LOGClient::PostLogStoreLogs(const std::string& topic, c
     {
         throw LOGException(ERR_LIMIT_LOG_SIZE, "error log size limit");
     }
-    string body = "";
     string serializeData = "";
     cls::LogGroup pbLogGroup;
     pbLogGroup = loggroup_;
@@ -340,7 +339,14 @@ PostLogStoreLogsResponse LOGClient::PostLogStoreLogs(const std::string& topic, c
     plogGroup->CopyFrom(pbLogGroup);
     loggrouplst.SerializeToString(&serializeData);
 
+    return PostLogStoreLogs2(topic, serializeData);
+}
+
+PostLogStoreLogsResponse LOGClient::PostLogStoreLogs2(const std::string& topic, const std::string& serializeData)
+{
     string operation = STRUCTUREDLOG; //请求uri
+    string body = "";
+
     map<string, string> httpHeader;
     if (mCompressFlag)
     {
