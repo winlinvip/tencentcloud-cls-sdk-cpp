@@ -9,6 +9,7 @@ typedef void* srs_error_t;
 #define srs_error_new(ret, fmt, ...) (void*)(int64_t)ret
 #define srs_error_wrap(err, fmt, ...) (void*)(int64_t)1
 #define ERROR_PB_NO_SPACE               1084
+#define srs_freep(p) if (p) { delete p; p = NULL; } (void)0
 
 /**
  * bytes utility, used to:
@@ -96,6 +97,178 @@ public:
     // Write bytes to buffer
     void write_bytes(char* data, int size);
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////#include <string>
+#include <string>
+#include <map>
+#include <algorithm>
+#include <stdio.h>
+#include <string.h>
+#include <openssl/sha.h>
+#include <openssl/hmac.h>
+
+// See https://cloud.tencent.com/document/product/614/12445
+namespace tencentcloud_api_sign {
+    std::string sha1(const void *data, size_t len) {
+        unsigned char digest[SHA_DIGEST_LENGTH];
+        SHA_CTX ctx;
+        SHA1_Init(&ctx);
+        SHA1_Update(&ctx, data, len);
+        SHA1_Final(digest, &ctx);
+        char c_sha1[SHA_DIGEST_LENGTH*2+1];
+        for (unsigned i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+            sprintf(&c_sha1[i*2], "%02x", (unsigned int)digest[i]);
+        }
+        return c_sha1;
+    }
+
+    std::string hmac_sha1(const char *key, const void *data, size_t len) {
+        unsigned char digest[EVP_MAX_MD_SIZE];
+        unsigned digest_len;
+        char c_hmacsha1[EVP_MAX_MD_SIZE*2+1];
+#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10100000L
+        HMAC_CTX ctx;
+        HMAC_CTX_init(&ctx);
+        HMAC_Init_ex(&ctx, key, strlen(key), EVP_sha1(), NULL);
+        HMAC_Update(&ctx, (unsigned char*)data, len);
+        HMAC_Final(&ctx, digest, &digest_len);
+        HMAC_CTX_cleanup(&ctx);
+#else
+        HMAC_CTX *ctx = HMAC_CTX_new();
+        HMAC_CTX_reset(ctx);
+        HMAC_Init_ex(ctx, key, strlen(key), EVP_sha1(), NULL);
+        HMAC_Update(ctx, (unsigned char *)data, len);
+        HMAC_Final(ctx, digest, &digest_len);
+        HMAC_CTX_free(ctx);
+#endif
+        for (unsigned i = 0; i != digest_len; ++i) {
+            sprintf(&c_hmacsha1[i*2], "%02x", (unsigned int)digest[i]);
+        }
+        return c_hmacsha1;
+    }
+
+    std::string urlencode(const char *s) {
+        static unsigned char hexchars[] = "0123456789ABCDEF";
+        size_t length = strlen(s), pos = 0;
+        unsigned char c_url[length*3+1];
+        const unsigned char *p = (const unsigned char *)s;
+        for (; *p; ++p) {
+            if (isalnum((unsigned char)*p) || (*p == '-') ||
+                (*p == '_') || (*p == '.') || (*p == '~')) {
+                c_url[pos++] = *p;
+            } else {
+                c_url[pos++] = '%';
+                c_url[pos++] = hexchars[(*p)>>4];
+                c_url[pos++] = hexchars[(*p)&15U];
+            }
+        }
+        c_url[pos] = 0;
+        return (char*)c_url;
+    }
+
+    std::string signature(const std::string &secret_id,
+                          const std::string &secret_key,
+                          std::string method,
+                          const std::string &path,
+                          const std::map<std::string, std::string> &params,
+                          const std::map<std::string, std::string> &headers,
+                          long expire) {
+
+        const size_t SIGNLEN = 1024;
+        std::string http_request_info, uri_parm_list,
+                header_list, str_to_sign, sign_key;
+        transform(method.begin(), method.end(), method.begin(), ::tolower);
+        http_request_info.reserve(SIGNLEN);
+        http_request_info.append(method).append("\n").append(path).append("\n");
+        uri_parm_list.reserve(SIGNLEN);
+        std::map<std::string, std::string>::const_iterator iter;
+        for (iter = params.begin();
+             iter != params.end(); ) {
+            uri_parm_list.append(iter->first);
+            http_request_info.append(iter->first).append("=")
+                    .append(urlencode(iter->second.c_str()));
+            if (++iter != params.end()) {
+                uri_parm_list.append(";");
+                http_request_info.append("&");
+            }
+        }
+        http_request_info.append("\n");
+        header_list.reserve(SIGNLEN);
+        for (iter = headers.begin();
+             iter != headers.end(); ++iter) {
+            sign_key = iter->first;
+            transform(sign_key.begin(), sign_key.end(), sign_key.begin(), ::tolower);
+            if (sign_key == "content-type" || sign_key == "content-md5"
+                || sign_key == "host" || sign_key[0] == 'x') {
+                header_list.append(sign_key);
+                http_request_info.append(sign_key).append("=")
+                        .append(urlencode(iter->second.c_str()));
+                header_list.append(";");
+                http_request_info.append("&");
+            }
+        }
+        if (!header_list.empty()) {
+            header_list[header_list.size() - 1] = 0;
+            http_request_info[http_request_info.size() - 1] = '\n';
+        }
+        //printf("%s\nEOF\n", http_request_info.c_str());
+        char signed_time[SIGNLEN];
+        int signed_time_len = snprintf(signed_time, SIGNLEN,
+                                       "%lu;%lu", time(0) - 60, time(0) + expire);
+        //snprintf(signed_time, SIGNLEN, "1510109254;1510109314");
+        std::string signkey = hmac_sha1(secret_key.c_str(),
+                                        signed_time, signed_time_len);
+        str_to_sign.reserve(SIGNLEN);
+        str_to_sign.append("sha1").append("\n")
+                .append(signed_time).append("\n")
+                .append(sha1(http_request_info.c_str(), http_request_info.size()))
+                .append("\n");
+        //printf("%s\nEOF\n", str_to_sign.c_str());
+        char c_signature[SIGNLEN];
+        snprintf(c_signature, SIGNLEN,
+                 "q-sign-algorithm=sha1&q-ak=%s"
+                 "&q-sign-time=%s&q-key-time=%s"
+                 "&q-header-list=%s&q-url-param-list=%s&q-signature=%s",
+                 secret_id.c_str(), signed_time, signed_time,
+                 header_list.c_str(), uri_parm_list.c_str(),
+                 hmac_sha1(signkey.c_str(), str_to_sign.c_str(),
+                           str_to_sign.size()).c_str());
+        return c_signature;
+    }
+}
+
+std::string srs_cloud_to_querystring(std::map<std::string, std::string>& params) {
+    std::string v;
+    for (std::map<std::string, std::string>::iterator it = params.begin(); it != params.end(); ++it) {
+        if (it != params.begin()) {
+            v.append("&");
+        }
+        v.append(it->first);
+        v.append("=");
+        v.append(tencentcloud_api_sign::urlencode(it->second.c_str()));
+    }
+    return v;
+}
+
+void srs_cloud_sign_request(
+        const std::string& host, const std::string& ak_id, const std::string& ak_secret,
+        const std::string& path, const std::string& method, const std::string& topic,
+        std::map<std::string, std::string>& params, std::map<std::string, std::string>& headers
+) {
+    params["topic_id"] = topic;
+
+    headers["Host"] = host;
+    headers["UserAgent"] = "tencent-log-sdk-cpp v1.0.1";
+    headers["Content-Type"] = "application/x-protobuf";
+
+    std::string signature = tencentcloud_api_sign::signature(
+            ak_id, ak_secret, method, path, params, headers,
+            300 // Expire in seconds
+    );
+    headers["Authorization"] = signature;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -319,6 +492,10 @@ public:
     SrsClsLog() {
     }
     ~SrsClsLog() {
+        for (std::vector<SrsClsLogContent*>::iterator it = contents_.begin(); it != contents_.end(); ++it) {
+            SrsClsLogContent* content = *it;
+            srs_freep(content);
+        }
     }
 public:
     SrsClsLogContent* add_content() {
@@ -393,6 +570,10 @@ public:
     SrsClsLogGroup() {
     }
     ~SrsClsLogGroup() {
+        for (std::vector<SrsClsLog*>::iterator it = logs_.begin(); it != logs_.end(); ++it) {
+            SrsClsLog* log = *it;
+            srs_freep(log);
+        }
     }
 public:
     SrsClsLogGroup* set_source(std::string v) {
@@ -465,6 +646,10 @@ public:
     SrsClsLogGroupList() {
     }
     ~SrsClsLogGroupList() {
+        for (std::vector<SrsClsLogGroup*>::iterator it = groups_.begin(); it != groups_.end(); ++it) {
+            SrsClsLogGroup* group = *it;
+            srs_freep(group);
+        }
     }
 public:
     SrsClsLogGroup* add_log_group() {
@@ -870,6 +1055,32 @@ public:
     }
 };
 
+#include "adapter.h"
+PostLogStoreLogsResponse send_logs(string topic, string data, string endpoint, string ak_id, string ak_secret) {
+    string path = "/structuredlog";
+    string method = "POST";
+
+    std::map<string, string> params;
+    std::map<string, string> headers;
+    srs_cloud_sign_request(endpoint, ak_id, ak_secret, path, method, topic, params, headers);
+
+    string queryString = srs_cloud_to_querystring(params);
+
+    HttpMessage httpResponse;
+    curl_off_t mMaxSendSpeedInBytePerSec = 1024 * 1024 * 1024;
+    LOGAdapter::Send(method, endpoint, 80, path, queryString, headers, data,
+        LOG_REQUEST_TIMEOUT, LOG_CONNECT_TIMEOUT, httpResponse,
+             mMaxSendSpeedInBytePerSec);
+
+    PostLogStoreLogsResponse ret;
+    ret.bodyBytes = data.size();
+    ret.statusCode = httpResponse.statusCode;
+    ret.requestId = httpResponse.header["X-Cls-Requestid"];
+    ret.content = httpResponse.content;
+    ret.header = httpResponse.header;
+    return ret;
+}
+
 int main(int argc, char **argv) {
     std::string region = getenv("REGION") ? getenv("REGION") : "ap-guangzhou";
     std::string ak_id = getenv("AKID") ? getenv("AKID") : "";
@@ -930,8 +1141,15 @@ int main(int argc, char **argv) {
     //                      63 6e (string="cn")
     //          22 09 (LogGroup.source, ID=4, LD=0x09=9B)
     //              31 32 37 2e 30 2e 30 2e 31 (string="127.0.0.1")
-    //
-    /*cls::LogGroup loggroup;
+
+    // 1: Use SDK PB and POST.
+    // 2: Use new PB and SDK POST.
+    // 3: Use new PB and POST.
+    #define SWITCHER 3
+
+    // Use SDK PB and POST.
+#if SWITCHER == 1
+    cls::LogGroup loggroup;
     loggroup.set_source("127.0.0.1");
     auto log = loggroup.add_logs();
     log->set_time(now);
@@ -940,18 +1158,30 @@ int main(int argc, char **argv) {
     auto content2 = log->add_contents();
     content2->set_key("version"); content2->set_value("v5.0.35");
     auto content3 = log->add_contents();
-    content3->set_key("region"); content3->set_value("cn");/**/
-    SrsClsLogGroupList loggroup;
-    SrsClsLog* log = loggroup.add_log_group()->set_source("127.0.0.1")->add_log()->set_time(now);
-    log->add_content()->set_key("content")->set_value("this my test log");
-    log->add_content()->set_key("version")->set_value("v5.0.35");
-    log->add_content()->set_key("region")->set_value("cn");/**/
+    content3->set_key("region"); content3->set_value("cn");
 
     PostLogStoreLogsResponse ret;
     try {
         for (int i = 0; i < 1; ++i) {
-            /*ret = ptr->PostLogStoreLogs(topic, loggroup);/**/
+            ret = ptr->PostLogStoreLogs(topic, loggroup);
+            printf("%s\n", ret.Printf().c_str());
+        }
+    }
+    catch (LOGException &e) {
+        cout << e.GetErrorCode() << ":" << e.GetMessage() << endl;
+    }
 
+#elif SWITCHER == 2
+    // Use new PB and SDK POST.
+    SrsClsLogGroupList loggroup;
+    SrsClsLog* log = loggroup.add_log_group()->set_source("127.0.0.1")->add_log()->set_time(now);
+    log->add_content()->set_key("content")->set_value("this my test log");
+    log->add_content()->set_key("version")->set_value("v5.0.35");
+    log->add_content()->set_key("region")->set_value("cn");
+
+    PostLogStoreLogsResponse ret;
+    try {
+        for (int i = 0; i < 1; ++i) {
             int size = loggroup.nb_bytes();
             char buf[size];
             memset(buf, 0, size);
@@ -960,14 +1190,40 @@ int main(int argc, char **argv) {
                 printf("encode log failed");
                 exit(-1);
             }
-            ret = ptr->PostLogStoreLogs2(topic, string(buf, size));/**/
-
+            ret = ptr->PostLogStoreLogs2(topic, string(buf, size));
             printf("%s\n", ret.Printf().c_str());
         }
-    }
-    catch (LOGException &e) {
+    } catch (LOGException &e) {
         cout << e.GetErrorCode() << ":" << e.GetMessage() << endl;
     }
+
+#elif SWITCHER == 3
+    // Use new PB and POST.
+    SrsClsLogGroupList loggroup;
+    SrsClsLog* log = loggroup.add_log_group()->set_source("127.0.0.1")->add_log()->set_time(now);
+    log->add_content()->set_key("content")->set_value("this my test log");
+    log->add_content()->set_key("version")->set_value("v5.0.35");
+    log->add_content()->set_key("region")->set_value("cn");
+
+    PostLogStoreLogsResponse ret;
+    try {
+        for (int i = 0; i < 1; ++i) {
+            int size = loggroup.nb_bytes();
+            char buf[size];
+            memset(buf, 0, size);
+            SrsBuffer b(buf, size);
+            if (loggroup.encode(&b)) {
+                printf("encode log failed");
+                exit(-1);
+            }
+            ret = send_logs(topic, string(buf, size), endpoint, ak_id, ak_secret);
+            printf("%s\n", ret.Printf().c_str());
+        }
+    } catch (LOGException &e) {
+        cout << e.GetErrorCode() << ":" << e.GetMessage() << endl;
+    }
+#endif
+
     return 0;
 }
 
